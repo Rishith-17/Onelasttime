@@ -1,6 +1,5 @@
 fastapi
 uvicorn
+pillow
 transformers
 torch
-pillow
-python-multipart
