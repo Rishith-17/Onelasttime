@@ -1,11 +1,12 @@
 from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import io
 
 app = FastAPI()
 
-# CORS settings (unchanged)
+# CORS (keep this)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,10 +16,11 @@ app.add_middleware(
 )
 
 @app.post("/predict")
-async def predict_api(image: UploadFile = File(...)):  # ✅ Fix is here
-    img = Image.open(image.file)  # ✅ Updated for UploadFile
-
-    # Your model prediction logic here
-    # Example stub:
-    prediction = model.predict(img)  # Make sure 'model' is defined elsewhere
-    return {"emotion": prediction}
+async def predict(image: UploadFile = File(...)):
+    try:
+        img = Image.open(image.file)
+        # 🧪 Just for testing — return fixed response
+        return {"emotion": "happy"}
+    except Exception as e:
+        # ✅ Return error as JSON (never crash silently)
+        return JSONResponse(status_code=500, content={"error": str(e)})
