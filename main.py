@@ -6,14 +6,9 @@ from PIL import Image
 import torch
 import io
 
-# Load processor and model (faster and more memory efficient than pipeline)
-processor = AutoProcessor.from_pretrained("dima806/facial_emotions_image_detection")
-model = AutoModelForImageClassification.from_pretrained("dima806/facial_emotions_image_detection")
-model.eval()
-
 app = FastAPI()
 
-# Enable CORS for frontend integration
+# Allow CORS for frontend or Lovable AI
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,27 +17,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Load model and processor ONCE during startup
+model_name = "dima806/facial_emotions_image_detection"
+processor = AutoProcessor.from_pretrained(model_name)
+model = AutoModelForImageClassification.from_pretrained(model_name)
+model.eval()  # no gradients
+
 @app.post("/predict")
 async def predict(image: UploadFile = File(...)):
     try:
         contents = await image.read()
         img = Image.open(io.BytesIO(contents)).convert("RGB")
-
-        # Preprocess image
         inputs = processor(images=img, return_tensors="pt")
 
-        with torch.no_grad():  # No gradients = lower memory
+        with torch.no_grad():
             outputs = model(**inputs)
             logits = outputs.logits
-            predicted_class_idx = logits.argmax(-1).item()
+            predicted_idx = logits.argmax(-1).item()
+            emotion = model.config.id2label[predicted_idx]
 
-        predicted_label = model.config.id2label[predicted_class_idx]
-
-        # Free up memory
-        del inputs, outputs, logits
-        torch.cuda.empty_cache()
-
-        return {"emotion": predicted_label}
+        return {"emotion": emotion}
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
