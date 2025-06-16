@@ -1,16 +1,19 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from transformers import pipeline
+from transformers import AutoProcessor, AutoModelForImageClassification
 from PIL import Image
+import torch
 import io
 
-# Load the model from Hugging Face
-emotion_model = pipeline("image-classification", model="dima806/facial_emotions_image_detection")
+# Load processor and model (faster and more memory efficient than pipeline)
+processor = AutoProcessor.from_pretrained("dima806/facial_emotions_image_detection")
+model = AutoModelForImageClassification.from_pretrained("dima806/facial_emotions_image_detection")
+model.eval()
 
 app = FastAPI()
 
-# CORS to allow frontend access
+# Enable CORS for frontend integration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,11 +28,21 @@ async def predict(image: UploadFile = File(...)):
         contents = await image.read()
         img = Image.open(io.BytesIO(contents)).convert("RGB")
 
-        # Use model to predict
-        predictions = emotion_model(img)
-        top_emotion = predictions[0]["label"]
+        # Preprocess image
+        inputs = processor(images=img, return_tensors="pt")
 
-        return {"emotion": top_emotion}
+        with torch.no_grad():  # No gradients = lower memory
+            outputs = model(**inputs)
+            logits = outputs.logits
+            predicted_class_idx = logits.argmax(-1).item()
+
+        predicted_label = model.config.id2label[predicted_class_idx]
+
+        # Free up memory
+        del inputs, outputs, logits
+        torch.cuda.empty_cache()
+
+        return {"emotion": predicted_label}
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
